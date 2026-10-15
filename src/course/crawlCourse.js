@@ -108,13 +108,46 @@ export async function crawlCourse(config, errorLogger) {
       slides: []
     };
 
+    let modulesToProcess = manifest.modules;
+
+    // Filter by specific chapter if requested via --chapter flag or config
+    if (config.crawl?.chapter) {
+      const target = config.crawl.chapter.toLowerCase().trim();
+      const numMatch = target.match(/\d+/);
+      const targetNum = numMatch ? numMatch[0] : null;
+
+      const filtered = manifest.modules.filter((m) => {
+        const mName = (m.name || '').toLowerCase();
+        if (mName.includes(target)) return true;
+        if (targetNum) {
+          const modNumMatch = mName.match(/(?:chapter|module|section|part)\s*0?(\d+)/i) || mName.match(/^0?(\d+)\b/);
+          if (modNumMatch && modNumMatch[1] === targetNum) return true;
+        }
+        return false;
+      });
+
+      if (filtered.length > 0) {
+        console.log(
+          `\n[Chapter Filter] Filtered to ${filtered.length} module(s) matching "${config.crawl.chapter}":`
+        );
+        filtered.forEach((m) => console.log(`  - "${m.name}"`));
+        modulesToProcess = filtered;
+      } else {
+        console.warn(
+          `\n[Chapter Filter Warning] No module explicitly matched "${config.crawl.chapter}". Available modules:`
+        );
+        manifest.modules.forEach((m, idx) => console.warn(`  [${idx + 1}] "${m.name}"`));
+        console.warn(`Proceeding with all modules.`);
+      }
+    }
+
     const maxModules = config.crawl?.singleTestMode
       ? 1
       : config.crawl?.maxModules > 0
       ? config.crawl.maxModules
-      : manifest.modules.length;
+      : modulesToProcess.length;
 
-    const modulesToProcess = manifest.modules.slice(0, maxModules);
+    modulesToProcess = modulesToProcess.slice(0, maxModules);
 
     for (let mIdx = 0; mIdx < modulesToProcess.length; mIdx++) {
       const moduleObj = modulesToProcess[mIdx];

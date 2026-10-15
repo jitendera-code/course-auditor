@@ -429,6 +429,111 @@ async function clickNextSlideButton(page, targetFrame, config) {
 }
 
 /**
+ * Attempt to advance to the next slide, handling interactive MCQs, knowledge checks,
+ * match-the-following, or temporarily disabled Next buttons.
+ */
+async function advanceToNextSlide(page, targetFrame, config, currentSlideTitle) {
+  // First attempt standard click
+  let advanced = await clickNextSlideButton(page, targetFrame, config);
+  if (advanced) return true;
+
+  // If not advanced, check if there is a DISABLED Next button or an interactive Quiz/MCQ
+  const framesToSearch =
+    targetFrame !== page.mainFrame() ? [targetFrame, page.mainFrame()] : [page.mainFrame()];
+
+  let hasDisabledNext = false;
+  let hasQuizElements = false;
+
+  for (const frame of framesToSearch) {
+    try {
+      const status = await frame.evaluate(() => {
+        const hasNextEl = Boolean(
+          document.querySelector(
+            "button[aria-label*='next' i], a[aria-label*='next' i], .next-slide, .btn-next, button:has-text('Next'), a:has-text('Next')"
+          )
+        );
+        const hasQuiz = Boolean(
+          document.querySelector(
+            'input[type="radio"], input[type="checkbox"], [role="radio"], [class*="quiz" i], [class*="mcq" i], [class*="question" i], [class*="matching" i], [class*="knowledge" i], button:has-text("Submit"), button:has-text("Check")'
+          )
+        );
+        return { hasNextEl, hasQuiz };
+      });
+      if (status.hasNextEl) hasDisabledNext = true;
+      if (status.hasQuiz) hasQuizElements = true;
+    } catch {
+      // ignore
+    }
+  }
+
+  // If neither a disabled next button nor a quiz element was found, we reached the end of the subtopic
+  if (!hasDisabledNext && !hasQuizElements) {
+    return false;
+  }
+
+  console.log(`\n  ⚠️  [INTERACTIVE QUIZ / MCQ / LOCKED SLIDE DETECTED]`);
+  console.log(`     Slide: "${currentSlideTitle}"`);
+  console.log(`     The Next button is locked by a knowledge check, MCQ, or Match-the-Following.`);
+
+  // Auto-attempt for simple MCQs: if radio buttons exist, try selecting one and clicking Submit
+  for (const frame of framesToSearch) {
+    try {
+      const autoClicked = await frame.evaluate(() => {
+        const radio = document.querySelector('input[type="radio"], [role="radio"]');
+        if (radio) {
+          radio.click();
+          // Look for submit or check button
+          const submitBtn = Array.from(document.querySelectorAll('button, a')).find((b) =>
+            /submit|check\s*answer|confirm/i.test(b.innerText || '')
+          );
+          if (submitBtn) {
+            submitBtn.click();
+          }
+          return true;
+        }
+        return false;
+      });
+      if (autoClicked) {
+        await page.waitForTimeout(1500);
+        advanced = await clickNextSlideButton(page, targetFrame, config);
+        if (advanced) {
+          console.log(`     [Auto-Assist] MCQ answered automatically and advanced to next slide.`);
+          return true;
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // If still locked (e.g. Match the Following, drag-and-drop, or multi-question check):
+  // Poll for up to 60 seconds while user completes it in the visible browser window
+  console.log(
+    `     [Human-Assist Mode] Waiting for quiz / matching completion in browser window (up to 60s)...`
+  );
+  console.log(`     (The crawler will automatically resume the moment you solve it or click Next)`);
+
+  const maxWaitSeconds = 60;
+  const pollIntervalMs = 1500;
+  const maxAttempts = Math.ceil((maxWaitSeconds * 1000) / pollIntervalMs);
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    await page.waitForTimeout(pollIntervalMs);
+    advanced = await clickNextSlideButton(page, targetFrame, config);
+    if (advanced) {
+      console.log(`     ✅ Quiz solved / Next button unlocked! Resuming crawl...`);
+      return true;
+    }
+    if (attempt % 10 === 0) {
+      console.log(`     ... Still waiting for quiz completion (${(attempt * 1.5).toFixed(0)}s elapsed) ...`);
+    }
+  }
+
+  console.log(`     [Notice] Quiz was not completed within ${maxWaitSeconds}s. Moving to next topic.`);
+  return false;
+}
+
+/**
  * Extract all slides for a given subtopic.
  * Navigates to the subtopic, loops through slides via Next button, prevents duplicate slides,
  * and returns the array of extracted slide objects.
@@ -484,8 +589,8 @@ export async function extractSubtopicSlides(page, moduleObj, subtopicObj, config
         break;
       }
 
-      // Try advancing to the next slide
-      const advanced = await clickNextSlideButton(page, targetFrame, config);
+      // Try advancing to the next slide (handling MCQs, quizzes, and locked Next buttons)
+      const advanced = await advanceToNextSlide(page, targetFrame, config, slideData.slideTitle);
       if (!advanced) {
         break;
       }

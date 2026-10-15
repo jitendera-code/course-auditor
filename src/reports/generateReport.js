@@ -36,6 +36,28 @@ export function buildMarkdownReport(auditData) {
     ''
   ];
 
+  if (Array.isArray(auditData.slideComparisons) && auditData.slideComparisons.length > 0) {
+    lines.push('## TOPIC & SLIDE RECONCILIATION SUMMARY', '');
+    lines.push('| Module / Chapter | New System Topic | Slide | Matched Legacy Source | Confidence | Alignment Status |');
+    lines.push('|---|---|---|---|---|---|');
+    auditData.slideComparisons.forEach((sc) => {
+      const isRenamed =
+        sc.matchedSourceHeading &&
+        sc.subtopic &&
+        sc.matchedSourceHeading.toLowerCase().trim() !== sc.subtopic.toLowerCase().trim();
+      const statusLabel =
+        isRenamed && sc.matchStatus === 'EXACT MATCH'
+          ? 'MATCHED (RENAMED TOPIC)'
+          : sc.matchStatus || 'MATCHED';
+      lines.push(
+        `| ${sc.module || 'Course'} | ${sc.subtopic || 'N/A'} | Slide ${sc.slideNumber || '1'} | ${
+          sc.matchedSourceHeading || 'Unmatched'
+        } | ${((sc.matchConfidence || 0) * 100).toFixed(0)}% | ${statusLabel} |`
+      );
+    });
+    lines.push('');
+  }
+
   if (issues.length === 0) {
     lines.push('---', '', 'No content discrepancies or defects were detected.', '');
   } else {
@@ -322,6 +344,63 @@ export function buildHtmlReport(auditData) {
       <div class="stat-card"><div class="label">Matched</div><div class="value" style="color:#375623">${summary.matched}</div></div>
       <div class="stat-card"><div class="label">Total Issues</div><div class="value" style="color:#c00000">${summary.totalIssues}</div></div>
     </div>
+
+    ${
+      Array.isArray(auditData.slideComparisons) && auditData.slideComparisons.length > 0
+        ? `
+    <h2>TOPIC & SLIDE RECONCILIATION TABLE (${auditData.slideComparisons.length} Slides)</h2>
+    <div style="overflow-x:auto; margin-bottom:28px;">
+      <table style="width:100%; border-collapse:collapse; background:#ffffff; border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.08); font-size:13px;">
+        <thead>
+          <tr style="background:#1b365d; color:#ffffff; text-align:left;">
+            <th style="padding:10px 12px;">Module / Chapter</th>
+            <th style="padding:10px 12px;">New System Topic</th>
+            <th style="padding:10px 12px;">Slide</th>
+            <th style="padding:10px 12px;">Matched Legacy Section</th>
+            <th style="padding:10px 12px;">Confidence</th>
+            <th style="padding:10px 12px;">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${auditData.slideComparisons
+            .map((sc, i) => {
+              const isRenamed =
+                sc.matchedSourceHeading &&
+                sc.subtopic &&
+                sc.matchedSourceHeading.toLowerCase().trim() !== sc.subtopic.toLowerCase().trim();
+              const bg = i % 2 === 0 ? '#ffffff' : '#f8fafc';
+              const statusColor =
+                sc.matchStatus === 'EXACT MATCH'
+                  ? '#16a34a'
+                  : sc.matchStatus === 'REVIEW REQUIRED'
+                  ? '#ea580c'
+                  : '#2563eb';
+              const label =
+                isRenamed && sc.matchStatus === 'EXACT MATCH'
+                  ? 'Matched (Renamed Topic)'
+                  : sc.matchStatus || 'Matched';
+              return `
+            <tr style="background:${bg}; border-bottom:1px solid #e2e8f0;">
+              <td style="padding:8px 12px; font-weight:600;">${escapeHtml(sc.module)}</td>
+              <td style="padding:8px 12px;">${escapeHtml(sc.subtopic)}</td>
+              <td style="padding:8px 12px;">Slide ${escapeHtml(sc.slideNumber)}</td>
+              <td style="padding:8px 12px; color:#475569;">${escapeHtml(
+                sc.matchedSourceHeading || 'Unmatched'
+              )}</td>
+              <td style="padding:8px 12px;"><strong>${((sc.matchConfidence || 0) * 100).toFixed(
+                0
+              )}%</strong></td>
+              <td style="padding:8px 12px;"><span style="color:${statusColor}; font-weight:700;">${escapeHtml(
+                label
+              )}</span></td>
+            </tr>`;
+            })
+            .join('')}
+        </tbody>
+      </table>
+    </div>`
+        : ''
+    }
 
     <h2>DETECTED ISSUES (${issues.length})</h2>
     <div id="issues-container">

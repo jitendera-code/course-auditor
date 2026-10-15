@@ -15,8 +15,19 @@ import { exportReportToGoogleDocs } from './src/google/googleDocs.js';
 function parseArgs(argv) {
   const args = argv.slice(2);
   const command = args.find((a) => !a.startsWith('-')) || 'audit';
+
+  let chapter = undefined;
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--chapter' && args[i + 1] && !args[i + 1].startsWith('-')) {
+      chapter = args[i + 1];
+    } else if (args[i].startsWith('--chapter=')) {
+      chapter = args[i].split('=')[1];
+    }
+  }
+
   return {
     command: command.toLowerCase(),
+    chapter,
     single: args.includes('--single') || args.includes('-s'),
     fresh: args.includes('--fresh'),
     courseOnly: args.includes('--course-only'),

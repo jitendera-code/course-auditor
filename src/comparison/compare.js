@@ -180,12 +180,32 @@ export function findBestSourceMatch(slide, candidates) {
       sentenceHitRatio = hits / slideSentences.length;
     }
 
-    const compositeScore =
-      titleSim * 0.35 +
-      bodySim * 0.4 +
-      topicSim * 0.15 +
-      sentenceHitRatio * 0.1 +
-      (cand.isSection ? 0.02 : 0);
+    // Content-first dynamic scoring:
+    // If educational body text or sentences match strongly, prioritize content over divergent/renamed topic titles.
+    let compositeScore;
+    if (sentenceHitRatio >= 0.25 || bodySim >= 0.55) {
+      compositeScore =
+        bodySim * 0.55 +
+        sentenceHitRatio * 0.25 +
+        titleSim * 0.15 +
+        topicSim * 0.05 +
+        (cand.isSection ? 0.02 : 0);
+    } else {
+      compositeScore =
+        titleSim * 0.35 +
+        bodySim * 0.4 +
+        topicSim * 0.15 +
+        sentenceHitRatio * 0.1 +
+        (cand.isSection ? 0.02 : 0);
+    }
+
+    // Chapter / Module alignment bonus (prevents cross-chapter drift)
+    const slideModClean = (slide.module || '').toLowerCase();
+    const candContext = `${cand.pageTitle || ''} ${cand.url || ''} ${cand.heading || ''}`.toLowerCase();
+    const modNumMatch = slideModClean.match(/(?:chapter|module|section)\s*0?(\d+)/i) || slideModClean.match(/\b0?(\d+)\b/);
+    if (modNumMatch && candContext.includes(modNumMatch[0])) {
+      compositeScore += 0.08;
+    }
 
     if (compositeScore > bestScore) {
       bestScore = compositeScore;

@@ -106,6 +106,9 @@ export function loadConfig(cliOptions = {}) {
   const merged = deepMerge(baseConfig, envOverrides);
 
   // Apply CLI options overrides
+  if (cliOptions.chapter || process.env.CHAPTER) {
+    merged.crawl.chapter = String(cliOptions.chapter || process.env.CHAPTER).trim();
+  }
   if (cliOptions.single) {
     merged.crawl.singleTestMode = true;
     merged.crawl.maxModules = 1;
