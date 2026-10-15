@@ -12,7 +12,8 @@
     "compare": "node audit.js compare",
     "report": "node audit.js report",
     "google-doc": "node audit.js google-doc",
-    "audit": "node audit.js audit"
+    "audit": "node audit.js audit",
+    "live": "node live-compare.js"
   },
   "keywords": [
     "course-auditor",
